@@ -34,6 +34,11 @@ class MotionDetector: ObservableObject {
     private var gestureStartTime: Date?
     private let minGestureDuration: TimeInterval = 0.2  // 最小手势持续时间
     
+    // 控制台输出设置
+    private var updateCounter = 0
+    private let printInterval = 10  // 每10次更新打印一次
+    private var shouldPrintDetailed = false  // 是否打印详细数据
+    
     init() {
         queue.maxConcurrentOperationCount = 1
         queue.name = "MotionQueue"
@@ -57,17 +62,32 @@ class MotionDetector: ObservableObject {
             // 计算加速度变化
             let accelerationChange = currentAcceleration - self.lastAcceleration
             
+            // 增加计数器
+            self.updateCounter += 1
+            
+            // 定期打印详细数据（减少输出频率）
+            if self.shouldPrintDetailed && self.updateCounter % self.printInterval == 0 {
+                print("===== 加速度传感器数据 (每\(self.printInterval)次采样) =====")
+                print("X轴: \(String(format: "%.3f", data.acceleration.x))")
+                print("Y轴: \(String(format: "%.3f", data.acceleration.y))")
+                print("Z轴: \(String(format: "%.3f", data.acceleration.z))")
+                print("Y轴加速度变化: \(String(format: "%.3f", accelerationChange))")
+                print("----------------------------\n")
+            }
+            
             DispatchQueue.main.async {
-                // 检测向上抬起（负向加速度变化）- 修改这里
+                // 检测向上抬起（负向加速度变化）
                 if accelerationChange < -self.accelerationThreshold {
                     if self.currentGesture != .liftUp {
+                        print("🔵 检测到向上抬起手势！Y轴变化: \(String(format: "%.3f", accelerationChange))")
                         self.currentGesture = .liftUp
                         self.gestureStartTime = Date()
                     }
                 }
-                // 检测向下压（正向加速度变化）- 修改这里
+                // 检测向下压（正向加速度变化）
                 else if accelerationChange > self.accelerationThreshold {
                     if self.currentGesture != .pushDown {
+                        print("🟢 检测到向下压手势！Y轴变化: \(String(format: "%.3f", accelerationChange))")
                         self.currentGesture = .pushDown
                         self.gestureStartTime = Date()
                     }
@@ -78,6 +98,7 @@ class MotionDetector: ObservableObject {
                     if let startTime = self.gestureStartTime,
                        Date().timeIntervalSince(startTime) >= self.minGestureDuration {
                         // 记录有效手势
+                        print("✅ 有效手势已记录 - \(self.currentGesture == .liftUp ? "向上抬起" : "向下压")")
                         self.recordGesture()
                     }
                     self.currentGesture = .none
@@ -120,6 +141,12 @@ class MotionDetector: ObservableObject {
         pushDownCount = 0
         lastGestureTime = nil
         currentGesture = .none
+    }
+    
+    // 切换详细输出模式
+    func toggleDetailedOutput() {
+        shouldPrintDetailed.toggle()
+        print(shouldPrintDetailed ? "📊 已开启详细输出模式" : "🔇 已关闭详细输出模式")
     }
 }
 
@@ -165,31 +192,43 @@ struct ContentView: View {
             Spacer()
             
             // 控制按钮
-            HStack(spacing: 20) {
-                Button(action: {
-                    if motionDetector.isDetecting {
-                        motionDetector.stopDetection()
-                    } else {
-                        motionDetector.startDetection()
+            VStack(spacing: 15) {
+                HStack(spacing: 20) {
+                    Button(action: {
+                        if motionDetector.isDetecting {
+                            motionDetector.stopDetection()
+                        } else {
+                            motionDetector.startDetection()
+                        }
+                    }) {
+                        Label(
+                            motionDetector.isDetecting ? "停止检测" : "开始检测",
+                            systemImage: motionDetector.isDetecting ? "stop.circle.fill" : "play.circle.fill"
+                        )
+                        .frame(maxWidth: .infinity)
                     }
-                }) {
-                    Label(
-                        motionDetector.isDetecting ? "停止检测" : "开始检测",
-                        systemImage: motionDetector.isDetecting ? "stop.circle.fill" : "play.circle.fill"
-                    )
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    
+                    Button(action: {
+                        showingResetAlert = true
+                    }) {
+                        Label("重置", systemImage: "arrow.clockwise")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
                 
+                // 调试输出开关
                 Button(action: {
-                    showingResetAlert = true
+                    motionDetector.toggleDetailedOutput()
                 }) {
-                    Label("重置", systemImage: "arrow.clockwise")
+                    Label("调试输出", systemImage: "terminal")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.large)
+                .controlSize(.regular)
             }
         }
         .padding()
